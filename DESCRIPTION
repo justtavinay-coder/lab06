@@ -1,0 +1,3 @@
+solver is a C++ command-line application for solving quadratic equations.
+
+The package contains the solver binary built from the lab project.

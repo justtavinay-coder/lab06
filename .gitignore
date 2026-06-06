@@ -1,0 +1,11 @@
+*build*/
+*install*/
+*.swp
+.idea/
+artifacts/
+*.tar.gz
+*.zip
+*.deb
+*.rpm
+*.msi
+*.dmg

@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    tags:
+      - "v*"
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install RPM tooling (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Install WiX Toolset (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install wixtoolset --no-progress -y
+          $wix = (Get-ChildItem 'C:\Program Files (x86)' -Filter 'WiX Toolset*' -Directory | Select-Object -First 1).FullName
+          "$wix\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Configure
+        run: cmake -S . -B _build
+
+      - name: Build
+        run: cmake --build _build --config Release
+
+      - name: Run solver (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: printf "1 0 -1\n" | ./_build/solver_application/solver
+
+      - name: Run solver (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '"1 0 -1" | & "./_build/solver_application/Release/solver.exe"'
+
+      - name: Build binary packages
+        run: cmake --build _build --config Release --target package
+
+      - name: Build source packages (Linux)
+        if: runner.os == 'Linux'
+        run: cmake --build _build --config Release --target package_source
+
+      - name: Collect packages
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          for ext in tar.gz zip deb rpm msi dmg; do
+            cp _build/*."$ext" artifacts/ 2>/dev/null || true
+          done
+          ls -la artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: solver-packages-${{ matrix.os }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: solver-packages-*
+          merge-multiple: true
+
+      - name: List collected packages
+        run: ls -la dist
+
+      - name: Publish GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "solver package release (tar.gz, zip, deb, rpm, msi, dmg)" \
+          || gh release upload "$GITHUB_REF_NAME" dist/* --clobber --repo "$GITHUB_REPOSITORY"

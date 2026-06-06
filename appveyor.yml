@@ -1,0 +1,35 @@
+image: Visual Studio 2022
+
+platform:
+  - x64
+
+configuration:
+  - Release
+
+install:
+  # WiX Toolset нужен для генерации MSI через CPack (генератор WIX).
+  - cmd: choco install wixtoolset --no-progress -y
+
+before_build:
+  - cmake -S . -B _build -DCPACK_GENERATOR="ZIP;WIX"
+
+build_script:
+  - cmake --build _build --config Release
+  - cmake --build _build --config Release --target package
+
+artifacts:
+  - path: _build\*.zip
+    name: solver-windows-zip
+  - path: _build\*.msi
+    name: solver-windows-msi
+
+# Если коммит помечен тегом — публикуем MSI в GitHub Releases.
+deploy:
+  - provider: GitHub
+    auth_token:
+      secure: $(GITHUB_TOKEN)
+    artifact: /.*\.msi/
+    draft: false
+    prerelease: false
+    on:
+      APPVEYOR_REPO_TAG: true

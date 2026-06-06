@@ -1,0 +1,45 @@
+language: cpp
+
+# Ветвление по ОС: на Linux собираем deb/rpm (+ архивы),
+# на macOS — dmg (DragNDrop). Пакеты публикуются в GitHub Releases по тегу.
+jobs:
+  include:
+    - os: linux
+      dist: focal
+      addons:
+        apt:
+          packages:
+            - cmake
+            - rpm
+      script:
+        - cmake -S . -B _build -DCPACK_GENERATOR="TGZ;ZIP;DEB;RPM"
+        - cmake --build _build
+        - cmake --build _build --target package
+        - cmake --build _build --target package_source
+      deploy:
+        provider: releases
+        token: ${GITHUB_TOKEN}
+        file_glob: true
+        file:
+          - _build/*.tar.gz
+          - _build/*.zip
+          - _build/*.deb
+          - _build/*.rpm
+        skip_cleanup: true
+        on:
+          tags: true
+
+    - os: osx
+      script:
+        - cmake -S . -B _build -DCPACK_GENERATOR="TGZ;DragNDrop"
+        - cmake --build _build
+        - cmake --build _build --target package
+      deploy:
+        provider: releases
+        token: ${GITHUB_TOKEN}
+        file_glob: true
+        file:
+          - _build/*.dmg
+        skip_cleanup: true
+        on:
+          tags: true
